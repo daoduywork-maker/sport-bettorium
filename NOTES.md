@@ -38,8 +38,8 @@ python fetch_odds.py --market 181,1847               # full download, resumable
 
 ## Open checklist
 - [x] odds download finished → moved to `04_odds/`
-- [ ] fixture ↔ series matching (team-name aliases)
-- [ ] `simulate.py`
+- [x] fixture ↔ series matching (ALIASES dict in simulate.py)
+- [x] `simulate.py` (cutoff 60 min before game 1; drop series without game 1; drop contradictory series/map-1 prices)
 - [ ] log-loss branch
 - [ ] copy the paper PDF to `Literatures/Calibration_betting-Walsh2024.pdf`
 - [ ] delete `_to_delete/`

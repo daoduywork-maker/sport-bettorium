@@ -74,13 +74,16 @@ def main():
                "playoffs": first["playoffs"], "team_a": team_a, "team_b": team_b,
                "best_of": best_of, "score": f"{wins_a}-{wins_b}",
                "games_in_data": len(g), "first_game_no": int(first["game"]),
-               "team_a_won": int(wins_a > wins_b)}
+               "team_a_won": int(wins_a > wins_b),
+               "game1_a_won": int(first["blue_win"]) if first["game"] == 1 else np.nan}
         for branch, f in final.items():
             x = first[f["features"]].to_frame().T.astype(float)
             p_blue = models[branch].predict_proba(x)[0, 1]
             p_red = 1 - models[branch].predict_proba(-x)[0, 1]
             p = (p_blue + p_red) / 2
             row[f"p_game_a_{branch}"] = p
+            # map-1 market: team A's chance in game 1 itself, on its actual side (blue)
+            row[f"p_g1_a_{branch}"] = p_blue if first["game"] == 1 else np.nan
             row[f"p_series_a_{branch}"] = series_prob(p, best_of)
         rows.append(row)
 

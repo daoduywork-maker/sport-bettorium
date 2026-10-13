@@ -15,7 +15,7 @@ edges = np.linspace(0, 1, N_BINS + 1)
 fig, (ax, axh) = plt.subplots(2, 1, figsize=(5, 6), sharex=True,
                               gridspec_kw={"height_ratios": [3, 1]})
 ax.plot([0, 1], [0, 1], ls="--", c="grey", lw=1, label="perfect calibration")
-for branch, color in [("accuracy", "#1f77b4"), ("calibration", "#d62728")]:
+for branch, color in [("accuracy", "#1f77b4"), ("calibration", "#d62728"), ("logloss", "#2ca02c")]:
     p, y = df[f"p_blue_{branch}"].values, df["blue_win"].values
     idx = np.clip(np.digitize(p, edges) - 1, 0, N_BINS - 1)
     xs, ys = [], []

@@ -6,3 +6,5 @@ odds_raw/
 *.joblib
 __pycache__/
 _to_delete/
+_backup_2024start/
+rebuild.log

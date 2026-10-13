@@ -8,9 +8,9 @@ Reproducing Walsh & Joshi (2024), *"Machine learning for sports betting: should 
 |---|---|---|
 | 1. Raw data (Oracle's Elixir, 2024–2026) | `01_data/` | ✅ done |
 | 2. Feature building (blue − red, past games only, Elo) | `02_features/` | ✅ done: 6,477 games, 17 features |
-| 3. Model selection (accuracy branch vs calibration branch) + series probabilities | `03_model_selection/` | ✅ done |
+| 3. Model selection (accuracy / ECE / log-loss branches) + series probabilities | `03_model_selection/` | ✅ done |
 | 4. Historical odds (OddsPapi: series winner + map-1 winner) | `04_odds/` | ✅ done: 250 series Jun–Oct 2026, Pinnacle odds for 243 |
-| 5. Betting simulation (fixed stake, fractional Kelly) | `05_betting_simulation/` | ⬜ not started |
+| 5. Betting simulation (fixed stake, fractional Kelly) | `05_betting_simulation/` | ✅ 3 branches × 2 markets × 2 stakes × 4 edge thresholds: no system beats Pinnacle |
 
 ---
 
@@ -207,6 +207,7 @@ Match OddsPapi fixtures to Oracle series by date and team names; bet whenever $p
 
 - Accuracy branch: Elo, dragon edge, first-dragon rate, ward-clear edge, Baron edge, first-blood rate
 - Calibration branch: damage/min edge, first-dragon rate, game length (Elo was *not* chosen)
+- Log-loss branch: Elo, dragon edge, grub edge, ward-clear edge, first-tower rate, vision/min edge (LR, $C = 0.039$)
 
 **Test set (Jan–May 2026, 1,460 games), all candidates**
 
@@ -234,7 +235,276 @@ Match OddsPapi fixtures to Oracle series by date and team names; bet whenever $p
 
 Both models track the diagonal. The calibration-driven model has a narrower spread of predictions (the histogram), which is how it gets its lower ECE; the accuracy-driven model is slightly over-confident above 0.85. Baseline: always predicting blue gives ≈ 54 %.
 
+### Update: 2021–2023 data added (train 2022–2024, 2021 = warm-up)
+All features rebuilt from Oracle's Elixir 2021–2026 (11,788 major-league games, was 6,767). 2021 is used only to
+warm up Elo, rolling stats and player histories; training is 2022–2024 (5,921 games, was ~2,000), validation 2025,
+test and betting periods unchanged. Old results are kept in `_backup_2024start/`.
+Notes: no complete LPL games in 2021 (LPL warms up in 2022); LCP did not exist before 2025 (cold start, as before);
+`f_grub_edge` is now dropped by the KS test (grubs exist only from 2024). **This run tuned LR only**
+(`pipeline.py --models LR`): LR won every branch before, and SVM tuning on 6k games takes hours on 2 CPUs.
+The SVM solver is now capped at 10⁶ iterations for when the full search is rerun.
+
+| | old (train 2024) | new (train 2022–24) |
+|---|---|---|
+| bet-period game log-loss, accuracy / calibration / log-loss branch | 0.6367 / 0.6598 / 0.6359 | 0.6327 / 0.6358 / 0.6331 |
+| series log-loss on 224 matched series (best branch) vs Pinnacle 0.5748 | ≈ 0.605 | 0.6017 |
+| map-1 log-loss on 216 games (best branch) vs Pinnacle 0.6529 | ≈ 0.667 | 0.6672 |
+| draft experiment, best all-2026 log-loss | 0.6367 (G) | 0.6336 (H) |
+| experience: team Elo base → + all experience | 0.6451 → 0.6405 | 0.6414 → 0.6376 |
+
+- More data helps everywhere, most in Jan–Mar (warm-up), and it rescues the calibration branch (it now picks Elo).
+- **Betting is still negative in every configuration**; the single positive cell of the old run (map 1, calibration, eighth-Kelly, +13 %) is now −19 %, confirming it was noise. Pinnacle is still clearly sharper.
+
+### Betting simulation (Jun–Oct 2026, Pinnacle closing odds)
+
+225 of 323 series matched to odds (game 1 present, price taken ≥ 60 min before game 1, 2 fixtures with contradictory series/map-1 prices removed). 95 % intervals: 2,000 bootstrap resamples of the series.
+
+**Is the model sharper than the market?** Log-loss on the matched series (lower = better):
+
+| Market | Pinnacle (margin removed) | Accuracy-driven LR | Calibration-driven LR |
+|---|---|---|---|
+| Series winner (n = 224) | **0.575** | 0.606 | 0.676 |
+| Map-1 winner (n = 216) | **0.653** | 0.672 | 0.682 |
+
+**Returns** (bankroll 10,000; value bet = $p_{model} > 1/o$):
+
+| Market | Branch | Rule | Bets | Bets won | ROI | 95 % CI |
+|---|---|---|---|---|---|---|
+| series | accuracy | fixed 100 | 167 | 52 % | −14.8 % | −41 % … +11 % |
+| series | accuracy | ⅛-Kelly | 167 | 52 % | −34.8 % | −63 % … +13 % |
+| series | calibration | fixed 100 | 203 | 37 % | −32.6 % | −69 % … +5 % |
+| series | calibration | ⅛-Kelly | 203 | 37 % | −63.6 % | −90 % … +37 % |
+| map 1 | accuracy | fixed 100 | 158 | 51 % | −8.8 % | −33 % … +15 % |
+| map 1 | accuracy | ⅛-Kelly | 158 | 51 % | −18.6 % | −51 % … +43 % |
+| map 1 | calibration | fixed 100 | 177 | 40 % | −15.8 % | −48 % … +18 % |
+| map 1 | calibration | ⅛-Kelly | 177 | 40 % | +13.2 % | −57 % … +220 % |
+
+![Bankroll curves](assets/bankroll.png)
+
+**Reading.** Pinnacle's prices are better probabilities than either model, so the "value bets" are mostly the model's own errors, and both systems bet on 73–91 % of series (the same red flag as in the NBA paper). H1 is **not supported**: the calibration-driven model (lowest ECE) loses more, because ECE rewarded predictions squeezed toward 50 %, not closeness to the truth. Before the data cleaning, two fixtures with swapped series prices produced +200 % "profits": a single bad price can flip the conclusion, which is exactly the fragility of one-season ROI results.
+
+### Log-loss branch (RQ2) and minimum-edge rule
+
+A third branch selects features, hyperparameters and model by **log-loss** (min on validation / test). It again chose LR, with Elo first.
+
+| Betting period | Accuracy-driven | ECE-driven | **Log-loss-driven** | Pinnacle |
+|---|---|---|---|---|
+| Game accuracy (913 games) | 63.8 % | 60.0 % | **64.8 %** | – |
+| Series accuracy (323) | 68.4 % | 62.5 % | **70.3 %** | – |
+| Series log-loss (224 matched) | 0.606 | 0.676 | **0.605** | **0.575** |
+| Map-1 log-loss (216 matched) | 0.672 | 0.682 | **0.669** | **0.653** |
+
+**Minimum edge.** Bet only when $p_{model} - 1/o > \delta$. Yield per dollar staked, fixed 100 stakes:
+
+| Market | δ | Accuracy | ECE | Log-loss |
+|---|---|---|---|---|
+| series | 0 % | −8.9 % | −16.1 % | −7.3 % |
+| series | 2 % | −7.1 % | −16.9 % | −4.0 % |
+| series | 5 % | −18.3 % | −12.7 % | −13.9 % |
+| series | 10 % | −11.6 % | −13.2 % | −30.9 % |
+| map 1 | 0 % | −5.6 % | −8.9 % | −8.5 % |
+| map 1 | 2 % | −10.8 % | −5.9 % | −13.2 % |
+| map 1 | 5 % | −5.4 % | −5.7 % | −7.9 % |
+| map 1 | 10 % | −5.2 % | +9.8 % (81 bets, CI includes 0) | −9.3 % |
+
+![ROI vs minimum edge](assets/edge_threshold.png)
+
+**Reading.**
+- **H2 partly supported:** log-loss selection gives the best probabilities of the three branches (best accuracy *and* best log-loss), and it loses less than ECE selection on the series market. It still does not beat Pinnacle.
+- **Requiring a bigger edge does not create profit.** Yields stay around −5 % to −15 %, i.e. roughly the bookmaker margin or worse, which is what betting with *no* real edge looks like. When our model strongly disagrees with Pinnacle, it is usually our model that is wrong (rosters, substitutes, patches it cannot see). The single positive cell (ECE, map 1, δ = 10 %) has a 95 % interval that includes zero and is the kind of result one expects by chance among 24 cells.
+- **Overall:** with public team stats and Elo, the models are ~0.03 log-loss worse than Pinnacle's closing line; no model-selection metric fixes that. The question "accuracy or calibration?" only matters once a model is at least as sharp as the market.
+
+### Recency weighting (`03_model_selection/recency_experiment.py`)
+
+Three ways to make recent matches count more, tested on the log-loss-branch LR (60 settings, chosen on the test months):
+
+| Knob | Options | Test log-loss (others at current setting) |
+|---|---|---|
+| Feature averaging | mean of last 10 · EWMA half-life 3 / 5 / 10 / 20 games | 0.6498 · 0.6500 / 0.6499 / 0.6503 / 0.6504 (no effect) |
+| Elo update speed $K$ | 16 / **24** / 40 | **0.6488** / 0.6498 / 0.6521 (slower Elo is better) |
+| Training-sample weight $w = 0.5^{\text{age}/\tau}$ | equal / τ = 365 / 180 / 90 days | 0.6498 / 0.6495 / 0.6490 / **0.6478** |
+
+Best combination (EWMA half-life 5, $K = 16$, τ = 90 days): test 0.6498 → 0.6465, betting period 0.6359 → 0.6345, accuracy 64.8 % → 65.1 %. Real but small: it closes about 5 % of the gap to Pinnacle. Recent *training games* matter (the meta changes), but a team's form is already captured well by the last-10 mean and a slow-moving Elo.
+
+### Staleness and roster changes
+
+**Walk-forward check** (`03_model_selection/walkforward_check.py`): retraining every month on all earlier games instead of once on 2024–2025 changes the Jun–Oct log-loss only from 0.6375 to 0.6362. The model does not go stale during the year; the hardest months are **Jan–Mar** (0.68–0.69, right after the off-season), the easiest Apr–Aug (0.60–0.63).
+
+**Roster-aware features** (`02_features/roster_features.py`, `03_model_selection/roster_experiment.py`), from the player rows:
+
+| Variant (trained on 2024–2025) | Jan–Mar | Apr–May | Jun–Oct | All 2026 |
+|---|---|---|---|---|
+| baseline (team Elo) | 0.6749 | 0.6284 | 0.6375 | 0.6451 |
+| + roster changes, lineup familiarity | 0.6756 | 0.6288 | 0.6378 | 0.6455 |
+| **player Elo** instead of team Elo | **0.6697** | **0.6263** | 0.6372 | **0.6428** |
+| player Elo + roster features | 0.6712 | 0.6265 | **0.6369** | 0.6432 |
+
+*Player Elo* (every player carries a rating; team = mean of its 5 starters, so ratings follow players between teams) helps where expected, early in the year (−0.005), and a little overall. Counting roster changes adds nothing once player Elo is in. Still ~0.03 behind Pinnacle on the series market.
+
+### Draft features
+
+`02_features/draft_features.py`, from the picks in the player rows, using only earlier games: champion's recent pro win rate (90 days, shrunk toward 50 %), player's experience on the champion (log games), player's win rate on it (shrunk).
+
+| Variant (trained on 2024–2025) | Jan–Mar | Apr–May | Jun–Oct | All 2026 |
+|---|---|---|---|---|
+| pre-draft: player-Elo model | 0.6697 | 0.6263 | 0.6372 | 0.6428 |
+| + champion meta win rate | 0.6689 | 0.6201 | 0.6349 | 0.6396 |
+| + player comfort | 0.6667 | 0.6236 | 0.6352 | 0.6403 |
+| **+ all draft features** | **0.6662** | **0.6182** | **0.6329** | **0.6374** |
+
+The draft is the largest single improvement so far (−0.005 overall, −0.008 in Apr–May). **But it is only known ~10 min before the game**, so it cannot inform a pre-match series bet; only a map bet placed after the draft.
+
+**Versus Pinnacle's map-1 price** (`05_betting_simulation/draft_vs_market.py`, 216 matched games, Jun–Oct):
+
+| | Log-loss |
+|---|---|
+| our model, pre-draft | 0.6668 |
+| **our model + draft** | **0.6595** |
+| Pinnacle, 60 min before game 1 | 0.6529 |
+| Pinnacle, 20 / 10 / 2 min before | 0.6524 / 0.6548 / 0.6548 |
+
+The draft closes about two thirds of our gap to Pinnacle's map-1 price (0.014 → 0.005), and Pinnacle's map-1 line barely moves in the last minutes. Caveat: it is not certain whether Oracle's timestamp marks the start of the draft or of the game, so "−2 min" may still be pre-draft.
+
+### More features: early game, per-patch strength, lane matchups, synergy
+
+`early_features.py` (gold/XP/CS lead at 10–15 min, last 10 games; missing for LPL) and an extended `draft_features.py`:
+per-patch champion win rate (shrunk toward the 90-day rate), **lane matchup** (my champion vs the exact enemy champion in the same lane, last 365 days, shrunk), **synergy** (bot+sup, jng+mid, jng+top duos together, shrunk).
+
+| Variant (trained on 2024–2025) | Jan–Mar | Apr–May | Jun–Oct | All 2026 | Non-LPL 2026 |
+|---|---|---|---|---|---|
+| A pre-draft: player-Elo model | 0.6697 | 0.6263 | 0.6372 | 0.6428 | 0.6321 |
+| B A + early-game stats | 0.6707 | 0.6276 | 0.6370 | 0.6434 | 0.6325 |
+| C A + draft (meta, comfort) | 0.6662 | 0.6182 | 0.6329 | 0.6374 | 0.6273 |
+| D C + per-patch strength | 0.6666 | 0.6184 | 0.6328 | 0.6376 | 0.6274 |
+| E C + lane matchups | 0.6654 | 0.6177 | 0.6327 | 0.6370 | 0.6271 |
+| F C + synergy | 0.6651 | 0.6188 | 0.6319 | 0.6369 | 0.6264 |
+| **G A + all draft** | **0.6650** | 0.6185 | 0.6317 | **0.6367** | 0.6265 |
+| H everything | 0.6661 | 0.6200 | **0.6316** | 0.6375 | 0.6270 |
+
+- **Early-game stats add nothing**, even where they exist (non-LPL): a team that wins lanes also takes dragons, towers and Elo, which the model already has.
+- **Per-patch strength adds nothing** beyond the 90-day champion win rate (one patch is too few games per champion).
+- **Lane matchups and synergy help a little** (≈ −0.0005 each); G is the best draft model.
+- Diminishing returns: after Elo and the champion meta, each new feature family gives < 0.001.
+
+### Champion-class matchups (`02_features/class_features.py`)
+Exact champion pairs are rare, so we pooled champions into the League of Legends Wiki classes
+(13 subclasses in 7 classes, `02_features/champion_classes.csv`, all 173 champions covered).
+**Class lane matchup**: my subclass vs the enemy subclass in the same lane (e.g. Juggernaut top vs Skirmisher top).
+**Class cross matchup**: class vs class over all 25 blue × red champion pairs, to catch cross-lane counters (tank vs mage, engage vs poke).
+
+| Variant (2026 log-loss) | Jan–Mar | Apr–May | Jun–Oct | all 2026 |
+|---|---|---|---|---|
+| C meta + comfort | 0.6662 | 0.6182 | 0.6329 | 0.6374 |
+| I C + class lane | 0.6656 | 0.6183 | 0.6332 | 0.6374 |
+| J C + class cross | 0.6655 | 0.6181 | 0.6335 | 0.6374 |
+| G all draft | 0.6650 | 0.6185 | 0.6317 | 0.6367 |
+| K G + both class features | 0.6644 | 0.6185 | 0.6322 | 0.6368 |
+
+- **No gain.** Class-vs-class win rates in pro play stay very close to 50 % (cross-matchup SD 0.004), so the classes are balanced against each other; the coefficients are near zero (0.006, 0.015 per SD).
+- What matters in the draft is the specific champion's current strength and the player's comfort on it, not its class.
+
+### Which champion pairs matter? (`02_features/synergy_features.py`, `03_model_selection/synergy_experiment.py`)
+Each pair as its own feature (exact champion combination on the same team, 365 days, shrunk to 50 %, blue − red),
+added one at a time to the meta + comfort model (all-2026 log-loss 0.6374):
+
+| Added | all 2026 | vs base | Jun–Oct | Apr–May |
+|---|---|---|---|---|
+| old f_synergy (3 duos averaged) | 0.6369 | −0.0005 | 0.6319 | 0.6188 |
+| ADC + support | 0.6377 | +0.0003 | 0.6332 | 0.6185 |
+| jungle + mid | 0.6377 | +0.0002 | **0.6300** | 0.6229 |
+| jungle + support | 0.6374 | −0.0001 | 0.6328 | 0.6182 |
+| mid + support | 0.6381 | +0.0006 | 0.6335 | 0.6192 |
+| jungle + top | 0.6375 | 0.0000 | 0.6324 | 0.6184 |
+| jungle + mid + support (exact trio) | 0.6377 | +0.0002 | 0.6332 | 0.6185 |
+| jungle + mid + support (class trio) | 0.6377 | +0.0002 | 0.6338 | 0.6180 |
+| all 5 pairs + trios | 0.6381 | +0.0007 | 0.6296 | 0.6240 |
+
+- Only **jungle + mid** carries a real weight (0.11 per SD; others ≤ 0.04), but it is unstable: it helps in Jun–Oct (−0.003) and hurts in Apr–May (+0.005), so it nets out to zero.
+- Split pairs are noisier than the average; the old averaged f_synergy remains the best synergy feature.
+
+### Player experience (`02_features/experience_features.py`, `03_model_selection/experience_experiment.py`)
+Before this, experience was only covered indirectly: games on the champion (comfort), games with the current
+lineup (familiarity), and player Elo (skill, not experience). Using all leagues in Oracle's Elixir 2021–2026
+(academy and regional leagues included; careers before 2021 are cut off), per starter, games before the current one:
+career games, major-league + international games, playoff games, international games, years in the data, and
+number of rookies (< 30 major games). Mean over starters, blue − red. Known before the draft → a **pre-match** feature.
+
+| Variant (2026 log-loss) | Jan–Mar | Apr–May | Jun–Oct | all 2026 | vs base |
+|---|---|---|---|---|---|
+| team Elo base (pipeline) | 0.6749 | 0.6284 | 0.6375 | 0.6451 | |
+| + all experience | 0.6695 | 0.6261 | 0.6317 | 0.6405 | **−0.0046** |
+| player Elo base | 0.6697 | 0.6263 | 0.6372 | 0.6428 | |
+| + major-league games | 0.6686 | 0.6275 | 0.6322 | 0.6409 | −0.0018 |
+| + playoff games | 0.6657 | 0.6278 | 0.6352 | 0.6414 | −0.0014 |
+| + rookies | 0.6702 | 0.6261 | 0.6339 | 0.6416 | −0.0012 |
+| + all experience | 0.6678 | 0.6251 | 0.6311 | 0.6395 | **−0.0033** |
+
+- **Experience is the best pre-match addition so far**: about as large as the whole draft block (−0.005), but available before the draft, and it improves every period.
+- Largest weights: international games (0.14 per SD) and major-league games (0.11). International experience correlates 0.69 with Elo, so part of it is "good team", yet it still adds on top of Elo.
+- Years in the data has a *negative* weight once games are included: many years with few major games marks a journeyman.
+
+### International events (`03_model_selection/international_check.py`)
+
+Each league is a closed system: 1600 Elo in the LCK and 1600 Elo in the LCS are not the same strength. Features were rebuilt *with* MSI, Worlds, First Stand and EWC games, and a **region Elo** was added (one rating per home league, updated only by cross-region international games). Walk-forward: for each event, the LR is trained on every game played before it.
+
+| Pooled 2024–2026 events | Games | Log-loss, no region info | Log-loss, + region Elo | Accuracy, + region Elo |
+|---|---|---|---|---|
+| all international games | 833 | 0.647 | **0.638** | 63.0 % |
+| cross-region games only | 557 | 0.650 | **0.636** | 63.6 % |
+
+Region Elo after Worlds 2026 group games so far: LCK 1715 > LPL 1602 > LEC 1537 > LCS 1446 > LCP 1369 > CBLOL 1331.
+
+With region Elo, international games are predicted about as well as domestic ones (domestic 2026 ≈ 0.645 with the same features). Without it, cross-region games are clearly worse. Single events are small (12–232 games), so per-event numbers are noisy. No international odds were downloaded, so there is no market comparison yet.
+
 ---
+
+## Where might the market be softer? (exploratory, `03_model_selection/early_split_check.py`, `international_check.py`)
+Betting a whole season fails because Pinnacle is sharper everywhere on average (its margin on the matched games is
+5.4–5.7 %, 6.6–7.3 % in LCP). Two situations where the market could be softer were fixed *before* looking:
+**cross-region international games** and **the first weeks of a split / fresh rosters**. Odds exist only from 10 Apr 2026 (332 requested fixtures returned empty history; no Jan–Mar odds), and only for MSI 2026 and EWC 2026
+(no First Stand or Worlds), so the early-split idea is tested on the model side and on April–October starts.
+
+| Check | Result |
+|---|---|
+| Cross-region international games, 905 games 2022–2026, walk-forward per event | log-loss 0.624 → **0.606** with region Elo; accuracy 63.9 % → 66.6 %. Lower than domestic 2026 (≈ 0.634) because cross-region matchups are lopsided, not because the model is sharper than the market |
+| Experience + player Elo, weeks 1–2 / 3–4 / 5–8 / 9+ of a split | −0.0049 / −0.0009 / −0.0015 / −0.0066 vs team Elo: **not concentrated early** (weeks 1–4 pooled −0.0030, CI [−0.008, +0.002]) |
+| Fresh roster (either team changed its five in the last 10 games, 50 % of games) vs stable | −0.0026 vs −0.0040: no extra help for fresh rosters |
+| Model − Pinnacle, weeks 1–3 vs 4+ (matched Apr–Oct 2026) | series +0.025 (n = 62) vs +0.029 (n = 162); map 1 +0.027 vs +0.010: **no sign the market is softer early** |
+| Model − Pinnacle by league (Jun–Oct, 14–59 games each) | CBLOL (−0.009 series, −0.022 map 1) and LCP (−0.016 map 1) are the only cells at or below the market; all intervals include zero; chosen after looking, so treat as a hypothesis, not a finding |
+
+Earlier remark that experience / player Elo "helped most early in the season" holds for **Jan–Mar** (a new year after
+a long break, ratings regressed 25 %), not for the first weeks of each split.
+**Cross-region international games vs Pinnacle** (`05_betting_simulation/intl_vs_market.py`; MSI 2026 + EWC 2026,
+116 series with both teams known, 80 matched to Pinnacle, only 16 cross-region series / 15 map-1 games; model − market log-loss, negative = model better):
+
+| Market, subset | n | model without region Elo | model with region Elo |
+|---|---|---|---|
+| series, all | 79 | +0.014 [−0.043, +0.064] | **+0.040** [+0.006, +0.074] |
+| series, cross-region | 16 | −0.005 [−0.26, +0.20] | **+0.120** [+0.019, +0.246] |
+| series, same-region | 63 | +0.019 [−0.014, +0.050] | +0.019 [−0.012, +0.051] |
+| map 1, cross-region | 15 | +0.000 [−0.16, +0.14] | −0.012 [−0.064, +0.034] |
+| map 1, all | 71 | +0.014 [−0.029, +0.054] | +0.013 [−0.013, +0.040] |
+
+Fixed-stake value bets with the region model: series −21 % yield at δ = 0 (47 bets, CI −52 % to +13 %), −63 % at δ = 5 %;
+map 1 −17 % / −9 %. **Hypothesis not supported**: region Elo beats a model without it (0.624 → 0.606), but Pinnacle already
+prices regional strength better, and on series the region model is significantly worse than the market. 36 of 116 series
+could not be matched (mostly no Pinnacle fixture for that match).
+**Early-split hypothesis** cannot be tested on odds before April; model-side and April–October results above show no sign of a softer market.
+
+### Teams and players (`03_model_selection/team_player_check.py`)
+Strength is concentrated: among 71 teams with 40+ games, the 10 best win 66 % of their games and the 10 worst 28 %.
+Does the model (walk-forward, player Elo + experience, 6,602 games 2024–2026) misjudge particular teams or players?
+
+| Check | Result |
+|---|---|
+| Teams the model is significantly wrong about (\|z\| > 2) | 1 of 71 (chance alone ≈ 3) |
+| Team residual persistence, 2024–25 vs 2026 (49 teams) | Spearman +0.36 (p = 0.01): a small team-specific effect the model misses persists |
+| Players with \|z\| > 2 | 23 of 357 (chance ≈ 16); teammates share games, so z-scores are not independent |
+| Player residual persistence (189 players) | Spearman +0.14 (p = 0.05); top-fifth underrated players gain only +0.014 in 2026 |
+| Pinnacle, 29 teams with 8+ series (Apr–Oct 2026) | per-team gaps are noise at n = 8–18; favourites (market 77 %) won 78.2 %, underdogs (23 %) won 21.8 %: no favourite-longshot bias |
+
+Conclusion: the model already captures most of the team/player skew. Betting only on chosen teams would be selection on
+noise at this sample size. A possible feature: an exponentially weighted mean of each team's own model residual.
 
 ## File structure
 
@@ -246,14 +516,33 @@ Project-0/
 ├── 01_data/                   Oracle's Elixir CSVs 2024–2026 (not tracked)
 ├── 02_features/
 │   ├── build_features.py      raw CSVs -> one row per game, blue - red features
+│   ├── roster_features.py     roster changes, lineup familiarity, player Elo
+│   ├── draft_features.py      champion meta, per-patch strength, comfort, lane matchups, synergy
+│   ├── class_features.py      champion-class matchups (lane and cross-lane)
+│   ├── synergy_features.py    one synergy feature per champion pair + jng-mid-sup trio
+│   ├── experience_features.py career / major / playoff / international games per starter
+│   ├── champion_classes.csv   champion → subclass / class (League of Legends Wiki)
+│   ├── early_features.py      gold/XP/CS lead at 10-15 min (not LPL)
 │   └── features.csv
 ├── 03_model_selection/
 │   ├── pipeline.py            KS -> correlation -> SFS -> TPE tuning -> selection, both branches
 │   ├── series_probs.py        game -> series probabilities for the betting period
 │   ├── plot_reliability.py    -> assets/reliability_bet.png
+│   ├── recency_experiment.py  EWMA features, Elo K, time-decay sample weights
+│   ├── walkforward_check.py   static vs monthly retraining
+│   ├── roster_experiment.py   roster-aware feature variants
+│   ├── draft_experiment.py    draft feature variants
+│   ├── team_player_check.py   per-team / per-player residuals of the model and of Pinnacle
+│   ├── early_split_check.py   early-split / fresh-roster check, model vs Pinnacle by weeks since split start
+│   ├── international_check.py MSI / Worlds / First Stand / EWC, region Elo
 │   └── results/               logs, scores, models, predictions
 ├── 04_odds/                   fetch_odds.py, odds_raw/, odds_series.csv   (moved here after download)
-└── 05_betting_simulation/     (next)
+└── 05_betting_simulation/
+    ├── simulate.py            match odds to series, value-bet simulation, bootstrap
+    ├── draft_vs_market.py     draft model vs Pinnacle map-1 price at several cutoffs
+    ├── intl_vs_market.py      model vs Pinnacle at MSI / EWC 2026, cross-region vs same-region
+    ├── market_model.py        stacking: does our model add information beyond Pinnacle?
+    └── results/               summary.csv, bets_*.csv, matching.csv
 ```
 
 ## How to reproduce
@@ -267,6 +556,7 @@ cd 02_features && python build_features.py && cd ..          # ~5 s
 cd 03_model_selection && python pipeline.py                 # ~5 min (tuning cached in results/)
 python series_probs.py && python plot_reliability.py && cd ..
 cd ../04_odds && python fetch_odds.py --market 181,1847     # ~35 min, needs oddspapi_key.txt here
+cd ../05_betting_simulation && python simulate.py           # ~1 min
 ```
 
 ## Not tracked
@@ -275,7 +565,7 @@ cd ../04_odds && python fetch_odds.py --market 181,1847     # ~35 min, needs odd
 
 ## Next steps
 
-1. Match odds fixtures to Oracle series (date + fuzzy team names).
-2. `05_betting_simulation/simulate.py`: value-bet strategy, fixed and eighth-Kelly stakes, both markets (181, 1847), ROI + bootstrap intervals.
-3. Add a third, **log-loss-driven** branch (RQ2).
+1. Market-aware model: use Pinnacle's *opening* price as a feature and ask whether anything adds information beyond it (line-movement study).
+2. Player/roster features (substitutes, roster changes), the main thing the market knows and we do not.
+3. More checks on odds data quality (outcome swaps on the series market).
 4. Optional: retrain every split on the two previous splits (original plan).

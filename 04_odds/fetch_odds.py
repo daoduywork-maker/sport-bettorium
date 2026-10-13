@@ -25,7 +25,9 @@ from datetime import datetime, timedelta, timezone
 BASE = "https://api.oddspapi.io/v4"
 LEAGUE_WORDS = ["LCK", "LPL", "LEC", "LCS", "CBLOL", "LCP"]
 # picked from the --explore list: LCS, LEC, LCK, LPL (Tencent + TJ Sports), CBLOL, LCP
-TOURNAMENT_IDS = {2450, 2452, 2454, 15490, 39985, 26698, 45589}
+TOURNAMENT_IDS = {2450, 2452, 2454, 15490, 39985, 26698, 45589,
+                  # international: MSI, Worlds, First Stand, Esports World Cup (two ids)
+                  2527, 2549, 45617, 43193, 47864}
 BOOKMAKERS = "pinnacle,bet365,1xbet"     # max 3 per request
 COOLDOWN = {"historical-odds": 5.1, "fixtures": 1.1, "default": 1.1}
 RAW = "odds_raw"
@@ -105,6 +107,8 @@ def fixtures(tournament_id, start):
 def closing_prices(hist, market, start_time):
     """Last price at or before the start time, per bookmaker and outcome."""
     out = {}
+    if not isinstance(hist, dict):     # empty reply ([]): no odds recorded for this fixture
+        return out
     for bk, bdata in (hist.get("bookmakers") or {}).items():
         mk = (bdata.get("markets") or {}).get(str(market))
         if not mk:

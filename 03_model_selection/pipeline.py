@@ -1,5 +1,6 @@
 """
 pipeline.py  -  Walsh & Joshi (2024) model-selection pipeline, applied to LoL
+(three branches: accuracy, calibration = ECE, logloss)
 
 Usage (WSL, inside your venv):
     pip install pandas numpy scipy scikit-learn optuna joblib
@@ -15,7 +16,7 @@ Output: results/
     model_accuracy.joblib, model_calibration.joblib
 
 Time split (no shuffling, ever):
-    train : 2024
+    train : 2022-2024                  (2021 = warm-up only: Elo, rolling stats, player histories)
     val   : 2025                       (feature selection + hyperparameter tuning)
     test  : 2026-01-01 .. 2026-05-31   (pick the best model of each branch)
     bet   : 2026-06-01 ..              (betting simulation, untouched until the end)
@@ -81,6 +82,8 @@ def score(branch, y, p):
     """Lower is better for both branches."""
     if branch == "accuracy":
         return -accuracy_score(y, p >= 0.5)
+    if branch == "logloss":                       # proper scoring rule: honest AND informative
+        return log_loss(y, np.clip(p, 1e-6, 1 - 1e-6))
     return ece(y, p)
 
 
@@ -95,7 +98,8 @@ def make_model(name, hp, seed=0):
             random_state=seed, n_jobs=-1)
     elif name == "SVM":
         m = SVC(C=hp["C"], kernel=hp["kernel"], gamma=hp["gamma"],
-                probability=True, random_state=seed)
+                probability=True, random_state=seed,
+                max_iter=1_000_000)   # cap: poly kernels with large C can run for hours on 6k games
     elif name == "MLP":
         m = MLPClassifier(hidden_layer_sizes=(hp["width"],) * hp["layers"],
                           alpha=hp["alpha"], learning_rate_init=hp["lr"],
@@ -192,6 +196,7 @@ def main():
     ap.add_argument("--features", default="../02_features/features.csv")
     ap.add_argument("--out", default="results")
     ap.add_argument("--trials", type=int, default=40, help="Optuna trials per model per seed")
+    ap.add_argument("--models", default="LR,RF,SVM,MLP", help="comma list, e.g. LR for a fast run")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -199,7 +204,7 @@ def main():
     feats = [c for c in df.columns if c.startswith("f_")]
     df[feats] = df[feats].fillna(0)
 
-    tr = df[df["date"].dt.year == 2024]
+    tr = df[df["date"].dt.year.between(2022, 2024)]   # 2021 = warm-up only (Elo, rolling stats, histories)
     va = df[df["date"].dt.year == 2025]
     te = df[(df["date"] >= "2026-01-01") & (df["date"] < "2026-06-01")]
     bt = df[df["date"] >= "2026-06-01"]
@@ -217,13 +222,13 @@ def main():
     rows, final = [], {}
     cache_path = os.path.join(args.out, "tuning_cache.json")
     cache = json.load(open(cache_path)) if os.path.exists(cache_path) else {}
-    for branch in ["accuracy", "calibration"]:
+    for branch in ["accuracy", "calibration", "logloss"]:
         log(f"===== {branch.upper()} BRANCH =====")
         subset, s = forward_selection(branch, tr, va, feats)
         log(f"STEP C  forward selection -> {subset}  (val score {s:.4f})")
 
         best_model = None
-        for name in ["LR", "RF", "SVM", "MLP"]:
+        for name in args.models.split(","):
             # tuning results are cached, so an interrupted run resumes where it stopped
             key_c = f"{branch}|{name}|{','.join(subset)}|{args.trials}"
             if key_c in cache:
@@ -248,7 +253,8 @@ def main():
             log(f"STEP D  {name:3s} tuned {hp}")
             log(f"        test: acc {row['test_accuracy']:.4f}  ECE {row['test_ECE']:.4f}  "
                 f"bins filled {row['bins_filled']:.0%}  logloss {row['test_logloss']:.4f}")
-            key = -row["test_accuracy"] if branch == "accuracy" else row["test_ECE_constrained"]
+            key = {"accuracy": -row["test_accuracy"], "calibration": row["test_ECE_constrained"],
+                   "logloss": row["test_logloss"]}[branch]
             if best_model is None or key < best_model[0]:
                 best_model = (key, name, hp, seed)
         _, name, hp, seed = best_model

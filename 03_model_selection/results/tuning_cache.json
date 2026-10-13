@@ -1,74 +1,33 @@
 {
- "accuracy|LR|f_elo,f_dragon_edge,f_firstdragon,f_wcpm_edge,f_baron_edge,f_firstblood|40": [
+ "accuracy|LR|f_elo,f_gspd,f_firstdragon,f_wcpm_edge,f_vspm_edge,f_firstblood,f_dragon_edge,f_firsttower|40": [
   {
-   "C": 0.19628224813442816
+   "C": 0.030021814509113728
   },
-  -0.6631853785900783,
+  -0.6717391304347826,
   0
  ],
- "accuracy|RF|f_elo,f_dragon_edge,f_firstdragon,f_wcpm_edge,f_baron_edge,f_firstblood|40": [
+ "accuracy|RF|f_elo,f_gspd,f_firstdragon,f_wcpm_edge,f_vspm_edge,f_firstblood,f_dragon_edge,f_firsttower|40": [
   {
-   "n_estimators": 200,
+   "n_estimators": 450,
    "max_depth": 9,
-   "min_samples_leaf": 39,
-   "max_features": 0.5849412130793756
+   "min_samples_leaf": 35,
+   "max_features": 0.4330655452380797
   },
-  -0.6579634464751958,
+  -0.6691304347826087,
   0
  ],
- "accuracy|SVM|f_elo,f_dragon_edge,f_firstdragon,f_wcpm_edge,f_baron_edge,f_firstblood|40": [
+ "calibration|LR|f_elo,f_vspm_edge,f_firstblood|40": [
   {
-   "C": 0.8000589704250398,
-   "kernel": "rbf",
-   "gamma": 0.0834985971352054
+   "C": 1.3463977338761182
   },
-  -0.6636205395996518,
-  0
- ],
- "accuracy|MLP|f_elo,f_dragon_edge,f_firstdragon,f_wcpm_edge,f_baron_edge,f_firstblood|40": [
-  {
-   "width": 39,
-   "layers": 3,
-   "alpha": 0.023004653200802014,
-   "lr": 0.04915557824439919
-  },
-  -0.6675369886858138,
+  0.03019600430903713,
   1
  ],
- "calibration|LR|f_dpm_edge,f_firstdragon,f_gamelength_min|40": [
+ "logloss|LR|f_elo,f_gspd,f_wcpm_edge,f_vspm_edge,f_firsttower,f_firstdragon|40": [
   {
-   "C": 0.2969585731917578
+   "C": 99.39635619348131
   },
-  0.024417704587121745,
-  0
- ],
- "calibration|RF|f_dpm_edge,f_firstdragon,f_gamelength_min|40": [
-  {
-   "n_estimators": 100,
-   "max_depth": 6,
-   "min_samples_leaf": 14,
-   "max_features": 0.8924918844242815
-  },
-  0.0428240691354532,
+  0.6164208690648464,
   2
- ],
- "calibration|SVM|f_dpm_edge,f_firstdragon,f_gamelength_min|40": [
-  {
-   "C": 1.1494196400307433,
-   "kernel": "rbf",
-   "gamma": 0.005599223654063347
-  },
-  0.025147987780319972,
-  0
- ],
- "calibration|MLP|f_dpm_edge,f_firstdragon,f_gamelength_min|40": [
-  {
-   "width": 58,
-   "layers": 2,
-   "alpha": 0.5627949975223141,
-   "lr": 0.003860866271460547
-  },
-  0.021900287243899398,
-  0
  ]
 }

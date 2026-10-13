@@ -2,28 +2,45 @@
   "accuracy": {
     "model": "LR",
     "hyperparams": {
-      "C": 0.19628224813442816
+      "C": 0.030021814509113728
     },
     "seed": 0,
     "features": [
       "f_elo",
-      "f_dragon_edge",
+      "f_gspd",
       "f_firstdragon",
       "f_wcpm_edge",
-      "f_baron_edge",
-      "f_firstblood"
+      "f_vspm_edge",
+      "f_firstblood",
+      "f_dragon_edge",
+      "f_firsttower"
     ]
   },
   "calibration": {
     "model": "LR",
     "hyperparams": {
-      "C": 0.2969585731917578
+      "C": 1.3463977338761182
     },
-    "seed": 0,
+    "seed": 1,
     "features": [
-      "f_dpm_edge",
-      "f_firstdragon",
-      "f_gamelength_min"
+      "f_elo",
+      "f_vspm_edge",
+      "f_firstblood"
+    ]
+  },
+  "logloss": {
+    "model": "LR",
+    "hyperparams": {
+      "C": 99.39635619348131
+    },
+    "seed": 2,
+    "features": [
+      "f_elo",
+      "f_gspd",
+      "f_wcpm_edge",
+      "f_vspm_edge",
+      "f_firsttower",
+      "f_firstdragon"
     ]
   }
 }

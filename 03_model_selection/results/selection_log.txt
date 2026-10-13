@@ -1,42 +1,39 @@
-train 1806 | val 2298 | test 1460 | bet 913 games
-blue win rate: train 0.528, test 0.536
+train 5921 | val 2300 | test 1460 | bet 913 games
+blue win rate: train 0.530, test 0.536
 
 STEP A  covariate-shift check (KS test, train vs val)
-  -> 17 features left
+  drop f_grub_edge          KS p = 7.7e-163, D = 0.332
+  -> 16 features left
 
 STEP B  correlation filter (on train)  [shared by both branches]
   drop f_gpm_edge           redundant with f_elo (|rho| > 0.7)
   drop f_tower_edge         redundant with f_elo (|rho| > 0.7)
-  drop f_gspd               redundant with f_elo (|rho| > 0.7)
+  drop f_dpm_edge           redundant with f_gspd (|rho| > 0.7)
   drop f_win                redundant with f_elo (|rho| > 0.7)
-  drop f_inhib_edge         redundant with f_elo (|rho| > 0.7)
-  drop f_kill_edge          redundant with f_dpm_edge (|rho| > 0.7)
-  -> subset A (11): ['f_elo', 'f_dpm_edge', 'f_dragon_edge', 'f_vspm_edge', 'f_firsttower', 'f_baron_edge', 'f_wcpm_edge', 'f_gamelength_min', 'f_firstdragon', 'f_grub_edge', 'f_firstblood']
+  drop f_inhib_edge         redundant with f_gspd (|rho| > 0.7)
+  drop f_kill_edge          redundant with f_gspd (|rho| > 0.7)
+  drop f_baron_edge         redundant with f_gspd (|rho| > 0.7)
+  -> subset A (9): ['f_elo', 'f_gspd', 'f_vspm_edge', 'f_dragon_edge', 'f_firsttower', 'f_wcpm_edge', 'f_firstdragon', 'f_gamelength_min', 'f_firstblood']
 
 ===== ACCURACY BRANCH =====
-STEP C  forward selection -> ['f_elo', 'f_dragon_edge', 'f_firstdragon', 'f_wcpm_edge', 'f_baron_edge', 'f_firstblood']  (val score -0.6623)
-STEP D  LR  tuned {'C': 0.19628224813442816}
-        test: acc 0.6281  ECE 0.0561  bins filled 95%  logloss 0.6505
-STEP D  RF  tuned {'n_estimators': 200, 'max_depth': 9, 'min_samples_leaf': 39, 'max_features': 0.5849412130793756}
-        test: acc 0.6219  ECE 0.0593  bins filled 80%  logloss 0.6575
-STEP D  SVM tuned {'C': 0.8000589704250398, 'kernel': 'rbf', 'gamma': 0.0834985971352054}
-        test: acc 0.6247  ECE 0.0524  bins filled 70%  logloss 0.6529
-STEP D  MLP tuned {'width': 39, 'layers': 3, 'alpha': 0.023004653200802014, 'lr': 0.04915557824439919}
-        test: acc 0.6260  ECE 0.0683  bins filled 100%  logloss 0.6561
+STEP C  forward selection -> ['f_elo', 'f_gspd', 'f_firstdragon', 'f_wcpm_edge', 'f_vspm_edge', 'f_firstblood', 'f_dragon_edge', 'f_firsttower']  (val score -0.6674)
+STEP D  LR  tuned {'C': 0.030021814509113728}
+        test: acc 0.6301  ECE 0.0324  bins filled 90%  logloss 0.6431
 STEP E  selected accuracy-driven model: LR
 
 ===== CALIBRATION BRANCH =====
-STEP C  forward selection -> ['f_dpm_edge', 'f_firstdragon', 'f_gamelength_min']  (val score 0.0250)
-STEP D  LR  tuned {'C': 0.2969585731917578}
-        test: acc 0.6062  ECE 0.0373  bins filled 85%  logloss 0.6646
-STEP D  RF  tuned {'n_estimators': 100, 'max_depth': 6, 'min_samples_leaf': 14, 'max_features': 0.8924918844242815}
-        test: acc 0.6116  ECE 0.0410  bins filled 80%  logloss 0.6693
-STEP D  SVM tuned {'C': 1.1494196400307433, 'kernel': 'rbf', 'gamma': 0.005599223654063347}
-        test: acc 0.6068  ECE 0.0380  bins filled 80%  logloss 0.6635
-STEP D  MLP tuned {'width': 58, 'layers': 2, 'alpha': 0.5627949975223141, 'lr': 0.003860866271460547}
-        test: acc 0.6096  ECE 0.0294  bins filled 75%  logloss 0.6625
+STEP C  forward selection -> ['f_elo', 'f_vspm_edge', 'f_firstblood']  (val score 0.0302)
+STEP D  LR  tuned {'C': 1.3463977338761182}
+        test: acc 0.6260  ECE 0.0441  bins filled 95%  logloss 0.6465
 STEP E  selected calibration-driven model: LR
 
+===== LOGLOSS BRANCH =====
+STEP C  forward selection -> ['f_elo', 'f_gspd', 'f_wcpm_edge', 'f_vspm_edge', 'f_firsttower', 'f_firstdragon']  (val score 0.6164)
+STEP D  LR  tuned {'C': 99.39635619348131}
+        test: acc 0.6329  ECE 0.0384  bins filled 95%  logloss 0.6434
+STEP E  selected logloss-driven model: LR
+
 FINAL  refit on train+val+test, predict the betting period
-  accuracy    LR: bet-period acc 0.6375  ECE 0.0385  logloss 0.6367
-  calibration LR: bet-period acc 0.6002  ECE 0.0343  logloss 0.6598
+  accuracy    LR: bet-period acc 0.6473  ECE 0.0385  logloss 0.6327
+  calibration LR: bet-period acc 0.6418  ECE 0.0462  logloss 0.6358
+  logloss     LR: bet-period acc 0.6484  ECE 0.0399  logloss 0.6331
