@@ -1,0 +1,8 @@
+01_data/*.csv
+Literatures/*.pdf
+oddspapi_key.txt
+odds_raw/
+04_odds/odds_raw/
+*.joblib
+__pycache__/
+_to_delete/

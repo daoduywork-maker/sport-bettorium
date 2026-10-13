@@ -1,0 +1,29 @@
+{
+  "accuracy": {
+    "model": "LR",
+    "hyperparams": {
+      "C": 0.19628224813442816
+    },
+    "seed": 0,
+    "features": [
+      "f_elo",
+      "f_dragon_edge",
+      "f_firstdragon",
+      "f_wcpm_edge",
+      "f_baron_edge",
+      "f_firstblood"
+    ]
+  },
+  "calibration": {
+    "model": "LR",
+    "hyperparams": {
+      "C": 0.2969585731917578
+    },
+    "seed": 0,
+    "features": [
+      "f_dpm_edge",
+      "f_firstdragon",
+      "f_gamelength_min"
+    ]
+  }
+}
