@@ -7,7 +7,6 @@ its starting five within its last 10 games (counting the current one).
 Walk-forward by year (train 2022..Y-1, test Y = 2024, 2025, 2026), pre-draft models only:
   M0 team Elo (pipeline log-loss features)      M1 player Elo instead of team Elo
   M2 M0 + experience                            M3 M1 + experience
-Then, where odds exist (Apr-Oct 2026 matched series), model vs Pinnacle in early vs late weeks.
 """
 import glob, json, sys
 import numpy as np, pandas as pd
@@ -80,17 +79,3 @@ for lab, mask in [("weeks 1-4", L.weeks <= 4), ("fresh roster", L.fresh == "fres
     print(f"M3 - M0 on {lab:16s} n={mask.sum():5d}  {d.mean():+.4f}  95% CI [{np.percentile(b,2.5):+.4f}, {np.percentile(b,97.5):+.4f}]")
 print("\nbase log-loss: weeks 1-4 %.4f | later %.4f" % (L.loc[L.weeks <= 4, 'M0 team Elo'].mean(), L.loc[L.weeks > 4, 'M0 team Elo'].mean()))
 L.to_csv("results/early_split_losses.csv", index=False)
-
-# ---- market, early vs late (matched Apr-Oct 2026 series)
-m = pd.read_csv("../05_betting_simulation/results/matching.csv")
-m["d"] = pd.to_datetime(m.date, utc=True).dt.tz_localize(None)
-sched = df[["league", "date", "weeks"]].sort_values("date")
-m = pd.merge_asof(m.sort_values("d"), sched.rename(columns={"date": "d"}), on="d", by="league", direction="nearest", tolerance=pd.Timedelta(days=4))
-for mk, (lab, pc, yc) in {181: ("series", "p_series_a", "team_a_won"), 1847: ("map 1", "p_g1_a", "game1_a_won")}.items():
-    x = m[m.market == mk].dropna(subset=[yc, "weeks"]).copy()
-    q = (1 / x.odds_a) / (1 / x.odds_a + 1 / x.odds_b); y = x[yc]
-    ll = lambda pp: -(y * np.log(pp) + (1 - y) * np.log(1 - pp))
-    x["diff"] = ll(x[f"{pc}_logloss"]) - ll(q)
-    for nm, mask in [("weeks 1-3", x.weeks <= 3), ("weeks 4+", x.weeks > 3)]:
-        z = x.loc[mask, "diff"]; b = [rng.choice(z.values, len(z)).mean() for _ in range(1000)] if len(z) else [np.nan]
-        print(f"{lab:7s} {nm:10s} n={len(z):3d} model - market {z.mean():+.4f}  [{np.percentile(b,2.5):+.3f}, {np.percentile(b,97.5):+.3f}]")

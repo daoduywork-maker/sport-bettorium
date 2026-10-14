@@ -5,7 +5,6 @@ team_player_check.py  -  is the league skewed toward a few teams / players, and 
 Walk-forward pre-draft model M3 (player Elo + experience, log-loss-branch C), test years 2024, 2025, 2026, train 2022..Y-1.
 Residual of a team in a game = (team won) - (model probability that it wins). Persistent positive residual = the model
 keeps underrating that team/player. Persistence is checked by comparing 2024-25 with 2026 (split-half).
-Market part: matched Apr-Oct 2026 series, residual vs Pinnacle's de-vigged probability.
 """
 import glob, json, sys
 import numpy as np, pandas as pd
@@ -78,22 +77,4 @@ top = j.sort_values("mean_a", ascending=False)
 q = len(top) // 5
 print(f"players the model underrated most in 2024-25 (top fifth): residual in 2026 = {top.head(q).mean_b.mean():+.3f}; bottom fifth: {top.tail(q).mean_b.mean():+.3f}")
 
-# ---------- market, per team (Apr-Oct 2026 matched series)
-m = pd.read_csv("../05_betting_simulation/results/matching.csv"); m = m[m.market == 181].dropna(subset=["team_a_won"])
-m["q"] = (1 / m.odds_a) / (1 / m.odds_a + 1 / m.odds_b)
-ll = lambda y, p: -(y * np.log(p) + (1 - y) * np.log(1 - p))
-m["diff"] = ll(m.team_a_won, m.p_series_a_logloss) - ll(m.team_a_won, m.q)       # > 0: model worse
-ma = m[["team_a", "team_a_won", "q", "p_series_a_logloss", "diff"]].rename(columns={"team_a": "team", "team_a_won": "won", "q": "mq", "p_series_a_logloss": "mp"})
-mb = m[["team_b", "team_a_won", "q", "p_series_a_logloss", "diff"]].rename(columns={"team_b": "team"})
-mb["won"], mb["mq"], mb["mp"] = 1 - mb.pop("team_a_won"), 1 - mb.pop("q"), 1 - mb.pop("p_series_a_logloss")
-M = pd.concat([ma, mb]); M["mres"] = M.won - M.mq; M["modres"] = M.won - M.mp
-mt = M.groupby("team").agg(n=("won", "size"), won=("won", "mean"), market_p=("mq", "mean"), market_res=("mres", "mean"),
-                           model_res=("modres", "mean"), model_minus_market=("diff", "mean"))
-mt = mt[mt.n >= 8].sort_values("n", ascending=False)
-print(f"\nMARKET per team (series, Apr-Oct 2026, teams with >= 8 series: {len(mt)}); market_res > 0 = team wins MORE than Pinnacle's price")
-print(mt.round(3).to_string())
-tops = mt.assign(sk=mt.market_p).sort_values("market_p", ascending=False)
-fav = M[M.mq > .65]; dog = M[M.mq < .35]
-print(f"\nfavourites (market > 65 %): n={len(fav)}, market says {fav.mq.mean():.1%}, they won {fav.won.mean():.1%}")
-print(f"underdogs  (market < 35 %): n={len(dog)}, market says {dog.mq.mean():.1%}, they won {dog.won.mean():.1%}")
 G.to_csv("results/team_player_residuals.csv", index=False)

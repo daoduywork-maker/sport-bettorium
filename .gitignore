@@ -8,3 +8,6 @@ __pycache__/
 _to_delete/
 _backup_2024start/
 rebuild.log
+05_analyst/cache/
+05_analyst/reports/
+05_analyst/data/
