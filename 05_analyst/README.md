@@ -21,7 +21,7 @@ python lol_analyst.py "T1" "Gen.G"
 | `--data-dir DIR` | read the data from another folder |
 | `--date 2026-11-01` | analyse as of another date (Elo yearly reset, years as a pro) |
 | `--list-teams [text]` | teams with a game in the last 12 months |
-| `--no-range`, `--no-plot`, `--out DIR` | skip the 90% range / the PNG; folder for the PNG (default `./reports`) |
+| `--no-range`, `--no-plot`, `--out DIR` | skip the 90% range / the pie charts; output folder for the PDF and PNG (default `./reports`) |
 
 ## The report
 
@@ -32,6 +32,8 @@ python lol_analyst.py "T1" "Gen.G"
 5. **Recent form**: last 10 results, streak, Elo change, days since the last game.
 6. **Market** (with `--odds`): the bookmaker's margin-free probability against the model.
 7. **True/false positives**: from walk-forward predictions (each made by a model trained only on earlier years, 2024 onward), for team 1, team 2 and team 1 vs team 2. Positive = the model said the team wins. TP said win and won, FP said win and lost, TN said loss and lost, FN said loss and won. Printed as a table and saved as three pie charts.
+
+Everything printed is also saved as `reports/<team A> vs <team B>.pdf`: the report, the pie charts, and a guide that explains each number.
 
 ![example](../assets/analyst_pies_example.png)
 

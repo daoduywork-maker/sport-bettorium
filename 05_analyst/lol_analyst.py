@@ -14,8 +14,11 @@ Report: 1 win probability   2 why (12 factors)   3 lineups   4 head to head   5 
 This is an analysis tool, not betting advice: the bookmaker's closing odds were a better forecast than this model in every test.
 """
 import argparse
+import contextlib
+import io
 import json
 import sys
+import textwrap
 import warnings
 from pathlib import Path
 
@@ -188,6 +191,117 @@ def pies(groups, title, path):
     return path
 
 
+# ====================================================================== PDF report
+RESULT = {}          # filled by main(): title, output folder, pie-chart PNG
+TEE = None
+
+
+class Tee:
+    """copies everything printed to the terminal into a buffer, so the PDF gets the same text"""
+    def __init__(self, out):
+        self.out, self.buf = out, io.StringIO()
+    def write(self, s):
+        self.out.write(s); self.buf.write(s); return len(s)
+    def flush(self):
+        self.out.flush()
+
+
+def safe(s):
+    return "".join(ch if ch.isalnum() else "_" for ch in s)
+
+
+GUIDE = [
+    ("1) Win probability", [
+        "One game: the model's chance that the first team wins one game (averaged over both sides). 30.8% = about 3 games in 10.",
+        "90% range: the model is refit 200 times on resampled training data; the range is the 5th to 95th percentile. Narrow = stable.",
+        "Bo1 / Bo3 / Bo5: chance of winning a series of that length, treating games as independent. The underdog's chance falls as the series gets longer.",
+        "Side: the blue-side advantage for two equal teams, and the first team's chance on blue and on red.",
+        "Track record: past games (2024 on, each predicted before it was played) where the favourite had about this confidence, and how often the favourite won.",
+    ]),
+    ("2) Why: factors", [
+        "Each row is one factor. The raw values are shown for each team. 'effect' is the change in the first team's probability, in percentage points, when that factor is set to zero. Negative = favours the second team.",
+        "Factors overlap, so the effects do not add up exactly to the gap from 50%. Read the group totals first.",
+        "Lineup strength: mean Elo of the five starters. Elo is a rating that rises after wins against strong opponents; 1500 is average.",
+        "Recent form (last 10 games): gold spread, ward clearing edge, vision edge, first tower rate, first dragon rate. 'Edge' = team value minus opponent value; rates are shares of games (0% to 100%).",
+        "Experience: averages over the five starters of log(1 + games), years as a pro, and rookies (players with fewer than 30 major-league games).",
+        "Team Elo is shown for context only; it is not one of the model's factors.",
+    ]),
+    ("3) Lineups", [
+        "Last known starting five per team, with Elo and major-league games. 'rookie' = under 30 major-league games; 'NEW' = not in the team's last lineup.",
+    ]),
+    ("4) Head to head and lanes", [
+        "All games since 2021 between the two teams (major leagues and international events). Games on the same day are counted as one series.",
+        "Lane by lane: the record of the two players in the same role when they met.",
+        "Head to head adds no predictive power beyond team strength.",
+    ]),
+    ("5) Recent form", [
+        "Last 10 results (W = win, L = loss), record, current streak, Elo change over those games, and days since the last game (flagged after 60 days).",
+    ]),
+    ("6) Market (with --odds)", [
+        "Margin: the bookmaker's built-in profit, from the two decimal odds. Margin-free: the market's chance after removing the margin, to compare with the model.",
+    ]),
+    ("7) True / false positives", [
+        "Walk-forward predictions: each game was predicted by a model trained only on earlier years, before the game was played.",
+        "'Said win' = the model gave the team more than 50%. TP: said win and won. FP: said win and lost. TN: said loss and lost. FN: said loss and won.",
+        "Right = (TP + TN) / all games. In the pie charts, blue slices are correct predictions and orange slices are wrong ones.",
+    ]),
+    ("Limits", [
+        "Analysis tool, not betting advice. Pre-draft only: the draft, patch, injuries and scrims are not included. Cross-region matches are rough.",
+    ]),
+]
+
+
+def write_pdf(title, text, png, path):
+    import matplotlib.image as mpimg
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    W, H = 8.27, 11.69                                        # A4, portrait
+    body = []
+    for ln in text.splitlines():
+        body += textwrap.wrap(ln, 120, replace_whitespace=False, drop_whitespace=False) or [""]
+    pages = [body[i:i + 74] for i in range(0, len(body), 74)]
+    with PdfPages(path) as pdf:
+        # 1) the printed report, as it appears in the terminal
+        for k, chunk in enumerate(pages):
+            fig = plt.figure(figsize=(W, H))
+            top = 0.93
+            if k == 0:
+                fig.text(0.06, 0.955, title, fontsize=18, weight="bold")
+                fig.text(0.06, 0.935, "LoL matchup analyst report", fontsize=9, color="#52514e")
+                top = 0.91
+            fig.text(0.06, top, "\n".join(chunk), family="DejaVu Sans Mono", fontsize=6.5, va="top", linespacing=1.3)
+            fig.text(0.5, 0.02, f"page {k + 1}", fontsize=8, ha="center", color="#52514e")
+            pdf.savefig(fig); plt.close(fig)
+        # 2) the pie charts
+        if png and Path(png).exists():
+            fig = plt.figure(figsize=(W, H))
+            fig.text(0.06, 0.955, f"Pie charts: {title}", fontsize=14, weight="bold")
+            ax = fig.add_axes([0.03, 0.50, 0.94, 0.40])
+            ax.imshow(mpimg.imread(png)); ax.axis("off")
+            fig.text(0.06, 0.44, "Left: the first team's games. Middle: the second team's games.", fontsize=9.5)
+            fig.text(0.06, 0.41, "Right: games between the two teams, from the first team's side.", fontsize=9.5)
+            fig.text(0.06, 0.38, "Blue = model right, orange = model wrong. Labels show the share and the number of games.", fontsize=9.5)
+            pdf.savefig(fig); plt.close(fig)
+        # 3) what each number means
+        items = []
+        for head, bullets in GUIDE:
+            items.append((head, True))
+            for b in bullets:
+                for j, ln in enumerate(textwrap.wrap(b, 105)):
+                    items.append((("  - " if j == 0 else "    ") + ln, False))
+            items.append(("", False))
+        for i in range(0, len(items), 50):
+            fig = plt.figure(figsize=(W, H))
+            y = 0.94
+            if i == 0:
+                fig.text(0.06, 0.955, "How to read the numbers", fontsize=14, weight="bold")
+                y = 0.92
+            for ln, bold in items[i:i + 50]:
+                fig.text(0.06, y, ln, fontsize=9.5, weight="bold" if bold else "normal")
+                y -= 0.0165
+            pdf.savefig(fig); plt.close(fig)
+
+
 # ====================================================================== report
 def main():
     ap = argparse.ArgumentParser(description="League of Legends matchup analyst")
@@ -206,6 +320,7 @@ def main():
         for lg, g in t.sort_values("name").groupby("league"): print(f"{lg:6s}", ", ".join(g["name"]))
         print("(teams with a game in the last 12 months)"); return
     if not (a.team_a and a.team_b): ap.error("give two team names, or use --list-teams")
+    RESULT.update(title=f"{a.team_a} vs {a.team_b}", outdir=Path(a.out))
 
     asof = pd.Timestamp(a.date) if a.date else max(pd.Timestamp.today().normalize(), D.until + pd.Timedelta(days=1))
     ka, kb = D.find_team(a.team_a), D.find_team(a.team_b)
@@ -329,10 +444,19 @@ def main():
     if not a.no_plot:
         safe = lambda s: "".join(ch if ch.isalnum() else "_" for ch in s)
         out = pies(groups, f"Model predictions {span}: right (blue) vs wrong (orange)", Path(a.out) / f"{safe(na)}_vs_{safe(nb)}.png")
-        if out: print(f"   pie charts saved: {out.resolve()}")
+        if out:
+            RESULT["png"] = out
+            print(f"   pie charts saved: {out.resolve()}")
     print(f"\n{bar}\nModel: pre-draft logistic regression, {len(F)} factors, trained on {len(D.train):,} games {D.train.date.min().year}-{D.train.date.max().year}."
           f"\nNot included: draft, patch, injuries, scrims.  Data: Oracle's Elixir\n{bar}\n")
 
 
 if __name__ == "__main__":
-    main()
+    TEE = Tee(sys.stdout)
+    with contextlib.redirect_stdout(TEE):
+        main()
+    if RESULT:
+        RESULT["outdir"].mkdir(exist_ok=True)
+        pdf_path = RESULT["outdir"] / f"{safe(RESULT['title'])}.pdf"
+        write_pdf(RESULT["title"], TEE.buf.getvalue(), RESULT.get("png"), pdf_path)
+        print(f"   report PDF saved: {pdf_path.resolve()}")
