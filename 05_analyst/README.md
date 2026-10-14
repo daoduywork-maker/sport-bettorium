@@ -26,12 +26,10 @@ python lol_analyst.py "T1" "Gen.G"
 ## The report
 
 1. **Win probability**: one game (side-neutral), Bo1/Bo3/Bo5, 90% range (200 bootstrap refits), blue-side effect, and the track record: how often the model's favourite won at about that confidence.
-2. **Why**: the 12 factors for both teams and how many probability points each moves the result, grouped as lineup strength (player Elo), recent in-game form (last 10 games) and experience.
+2. **The 12 factors**: the model's inputs for both teams and how many probability points each moves the result. They are one lineup factor (player Elo), five recent-form factors (last 10 games) and six experience factors.
 3. **Lineups**: each team's last starting five with player Elo and major-league games; rookie and NEW (stand-in) flags.
-4. **Head to head**: team record and the last six series since 2021; lane-by-lane record for the two players facing each other.
-5. **Recent form**: last 10 results, streak, Elo change, days since the last game.
-6. **Market** (with `--odds`): the bookmaker's margin-free probability against the model.
-7. **True/false positives**: from walk-forward predictions (each made by a model trained only on earlier years, 2024 onward), for team 1, team 2 and team 1 vs team 2. Positive = the model said the team wins. TP said win and won, FP said win and lost, TN said loss and lost, FN said loss and won. Printed as a table and saved as three pie charts.
+4. **Market** (with `--odds`): the bookmaker's margin-free probability against the model.
+5. **True/false positives**: from walk-forward predictions (each made by a model trained only on earlier years, 2024 onward), for team 1, team 2 and team 1 vs team 2. Positive = the model said the team wins. TP said win and won, FP said win and lost, TN said loss and lost, FN said loss and won. Printed as a table and saved as three pie charts.
 
 Everything printed is also saved as `reports/<team A> vs <team B>.pdf`: the report, the pie charts, and a guide that explains each number.
 

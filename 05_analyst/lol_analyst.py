@@ -9,8 +9,8 @@ lol_analyst.py  -  League of Legends matchup analyst (runs locally on the projec
     python lol_analyst.py --list-teams [text]
 
 Covers the six major leagues (LCK, LPL, LEC, LCS, CBLOL, LCP) since 2021.  Data: Oracle's Elixir (oracleselixir.com).
-Report: 1 win probability   2 why (12 factors)   3 lineups   4 head to head   5 recent form   6 market (with --odds)
-        7 how often the model was right about these teams: true/false positives/negatives, also saved as 3 pie charts (PNG)
+Report: 1 win probability   2 the 12 factors   3 lineups   4 market (with --odds)
+        5 how often the model was right: true/false positives/negatives, 3 pie charts (PNG) and the PDF
 This is an analysis tool, not betting advice: the bookmaker's closing odds were a better forecast than this model in every test.
 """
 import argparse
@@ -218,32 +218,24 @@ GUIDE = [
         "Side: the blue-side advantage for two equal teams, and the first team's chance on blue and on red.",
         "Track record: past games (2024 on, each predicted before it was played) where the favourite had about this confidence, and how often the favourite won.",
     ]),
-    ("2) Why: factors", [
-        "Each row is one factor. The raw values are shown for each team. 'effect' is the change in the first team's probability, in percentage points, when that factor is set to zero. Negative = favours the second team.",
+    ("2) The 12 factors", [
+        "These are the model's 12 inputs. Each row shows the raw value for each team. 'effect' is the change in the first team's probability, in percentage points, when that factor is set to zero. Negative = favours the second team.",
         "Factors overlap, so the effects do not add up exactly to the gap from 50%. Read the group totals first.",
-        "Lineup strength: mean Elo of the five starters. Elo is a rating that rises after wins against strong opponents; 1500 is average.",
-        "Recent form (last 10 games): gold spread, ward clearing edge, vision edge, first tower rate, first dragon rate. 'Edge' = team value minus opponent value; rates are shares of games (0% to 100%).",
-        "Experience: averages over the five starters of log(1 + games), years as a pro, and rookies (players with fewer than 30 major-league games).",
-        "Team Elo is shown for context only; it is not one of the model's factors.",
+        "Lineup strength (1 factor): mean Elo of the five starters. Elo rises after wins against strong opponents; 1500 is average.",
+        "Recent form (5 factors, last 10 games): gold spread, ward clearing edge, vision edge, first tower rate, first dragon rate. 'Edge' = team value minus opponent value; rates are shares of games.",
+        "Experience (6 factors): averages over the five starters of log(1 + games) in all leagues, major-league, playoff and international games; years as a pro; and rookies (players with fewer than 30 major-league games).",
     ]),
     ("3) Lineups", [
-        "Last known starting five per team, with Elo and major-league games. 'rookie' = under 30 major-league games; 'NEW' = not in the team's last lineup.",
+        "Last known starting five per team, with Elo and major-league games. 'rookie' = under 30 major-league games; 'NEW' = not in the team's last lineup. The lineup sets the lineup-strength factor.",
     ]),
-    ("4) Head to head and lanes", [
-        "All games since 2021 between the two teams (major leagues and international events). Games on the same day are counted as one series.",
-        "Lane by lane: the record of the two players in the same role when they met.",
-        "Head to head adds no predictive power beyond team strength.",
-    ]),
-    ("5) Recent form", [
-        "Last 10 results (W = win, L = loss), record, current streak, Elo change over those games, and days since the last game (flagged after 60 days).",
-    ]),
-    ("6) Market (with --odds)", [
+    ("4) Market (with --odds)", [
         "Margin: the bookmaker's built-in profit, from the two decimal odds. Margin-free: the market's chance after removing the margin, to compare with the model.",
+        "The market has been a better forecast than this model in every test.",
     ]),
-    ("7) True / false positives", [
+    ("5) True / false positives", [
         "Walk-forward predictions: each game was predicted by a model trained only on earlier years, before the game was played.",
         "'Said win' = the model gave the team more than 50%. TP: said win and won. FP: said win and lost. TN: said loss and lost. FN: said loss and won.",
-        "Right = (TP + TN) / all games. In the pie charts, blue slices are correct predictions and orange slices are wrong ones.",
+        "Right = (TP + TN) / all games. In the pie charts, blue slices are correct predictions and orange slices are wrong ones. A team that is often favoured will look right more often.",
     ]),
     ("Limits", [
         "Analysis tool, not betting advice. Pre-draft only: the draft, patch, injuries and scrims are not included. Cross-region matches are rough.",
@@ -358,7 +350,7 @@ def main():
         print(f"   Track record: when the model's favourite was at about {conf:.0%}, it won {right:.0%} of {len(s):,} past games ({pr.date.min().year}-{pr.date.max().year}).")
 
     # ---- 2
-    print(f"\n2) WHY  (points of win probability each factor adds for {na}; negative = favours {nb})")
+    print(f"\n2) THE 12 FACTORS  (points of win probability each factor adds for {na}; negative = favours {nb})")
     rows, grp = [], {}
     for f, cj in zip(F, c):
         lab, gname, fmt = LABELS.get(f, (f, "Form", "{:.3f}"))
@@ -369,7 +361,6 @@ def main():
     print("   By group: " + "; ".join(f"{GROUPS[g]} {v * 100:+.1f}" for g, v in sorted(grp.items(), key=lambda kv: -abs(kv[1]))))
     print("   Effects are one factor at a time and overlap, so they do not add up exactly; a factor can point against its raw numbers")
     print("   because the model weighs overlapping factors jointly. Read the group totals first.")
-    print(f"   Context (not in the model): team Elo {na} {D.team_elo(ka, asof.year):.0f} vs {nb} {D.team_elo(kb, asof.year):.0f}")
 
     # ---- 3
     print("\n3) LINEUPS  (last starting five; change with --a-roster / --b-roster)")
@@ -385,55 +376,17 @@ def main():
         print(f"   {nm}"); print(table(rows, ["role", "player", "Elo", "major games", "note"]))
 
     # ---- 4
-    G = D.games
-    m = G[((G.bkey == ka) & (G.rkey == kb)) | ((G.bkey == kb) & (G.rkey == ka))].copy()
-    print("\n4) HEAD TO HEAD  (since 2021, major leagues + internationals; adds no predictive power beyond team strength)")
-    if m.empty:
-        print("   never met")
-    else:
-        m["a_won"] = np.where(m.bkey == ka, m.blue_win == 1, m.blue_win == 0); m["day"] = m.date.dt.date
-        ser = m.groupby("day").agg(league=("league", "first"), po=("playoffs", "max"), g=("a_won", "size"), w=("a_won", "sum")).reset_index()
-        rec = m[m.date >= asof - pd.Timedelta(days=730)]
-        print(f"   games {na} {int(m.a_won.sum())} - {int((~m.a_won).sum())} {nb}   series {int((ser.w * 2 > ser.g).sum())} - {int((ser.w * 2 < ser.g).sum())}"
-              f"   last 2 years {int(rec.a_won.sum())} - {int((~rec.a_won).sum())}")
-        for r in ser.sort_values("day").tail(6).iloc[::-1].itertuples():
-            print(f"   {r.day}  {r.league:5s}{' playoffs' if r.po else '':9s} {na} {int(r.w)}-{int(r.g - r.w)} {nb}")
-    rows = []
-    L = D.lanes
-    for pos in POS:
-        pa, pb = la.get(pos), lb.get(pos)
-        if pa is None or pb is None: continue
-        x1, x2 = (pa, pb) if pa < pb else (pb, pa)
-        h = L[(L.player_a == x1) & (L.player_b == x2) & (L.role == pos)]
-        nm_ = lambda q: D.players.at[q, "name"] if q in D.players.index else q
-        rows.append([pos, f"{nm_(pa)} v {nm_(pb)}", f"{int((h.winner == pa).sum())}-{int((h.winner == pb).sum())}" if len(h) else "never met",
-                     str(h.date.max().date()) if len(h) else ""])
-    print("   lane by lane (same two players, same role):"); print(table(rows, ["role", "players", "record", "last met"]))
-
-    # ---- 5
-    print("\n5) RECENT FORM")
-    for key, nm in ((ka, na), (kb, nb)):
-        g = G[(G.bkey == key) | (G.rkey == key)].sort_values("date").tail(10).copy()
-        if g.empty: print(f"   {nm}: no games"); continue
-        g["won"] = np.where(g.bkey == key, g.blue_win == 1, g.blue_win == 0); g["opp"] = np.where(g.bkey == key, g.rname, g.bname)
-        s_ = "".join("W" if w else "L" for w in g.won); k = len(s_) - len(s_.rstrip(s_[-1]))
-        rest = (asof - g.date.max()).days; t = D.teams.loc[key]
-        print(f"   {nm}: last {len(g)} {s_} ({int(g.won.sum())}-{int((~g.won).sum())}), streak {k}{s_[-1]}, "
-              f"Elo {t['elo_change']:+.0f} over {int(t['elo_change_games'])} games, last game {g.date.max().date()} ({rest} days ago)"
-              + ("  <- long break" if rest > 60 else ""))
-
-    # ---- 6
     if a.odds:
         oa, ob = a.odds; z = 1 / oa + 1 / ob; qa = (1 / oa) / z; ps = sp[a.bo]
-        print(f"\n6) MARKET  odds {oa} / {ob}: margin {z - 1:.1%}, margin-free {na} {qa:.1%}")
+        print(f"\n4) MARKET  odds {oa} / {ob}: margin {z - 1:.1%}, margin-free {na} {qa:.1%}")
         print(f"   model Bo{a.bo} {ps:.1%} vs market {qa:.1%}: {100 * (ps - qa):+.1f} pts. The market was the better forecast in every test of this project;")
         print("   a large gap usually means it knows something the model does not (stand-in, patch, scrim form, draft).")
 
-    # ---- 7
+    # ---- 5
     va_, vb_, vab = team_view(D.pred, na), team_view(D.pred, nb), team_view(D.pred, na, nb)
     groups = [(f"{na}: all games", confusion(va_)), (f"{nb}: all games", confusion(vb_)), (f"{na} vs {nb}\n(from {na}'s side)", confusion(vab))]
     span = f"{D.pred.date.min().date()} to {D.pred.date.max().date()}"
-    print(f"\n7) HOW OFTEN WAS THE MODEL RIGHT ABOUT THESE TEAMS?  (walk-forward predictions {span}, each made before the game)")
+    print(f"\n5) HOW OFTEN WAS THE MODEL RIGHT ABOUT THESE TEAMS?  (walk-forward predictions {span}, each made before the game)")
     print("   positive = model said the team wins (above 50%).  TP said WIN & won, FP said WIN & lost, TN said LOSS & lost, FN said LOSS & won")
     rows = []
     for name, cc in groups:
